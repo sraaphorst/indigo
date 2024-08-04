@@ -63,14 +63,18 @@ private fun getNumber(min: Int, max: Int,
                       prompt: String, invalidMessage: String, outOfRangeMessage: String): Int? {
     print(prompt)
     val value = readlnOrNull()?.toIntOrNull()
-    if (value == null || value < invalidMin || value > invalidMax) {
-        print(invalidMessage)
-        return null
-    } else if (value < min || value > max) {
-        print(outOfRangeMessage)
-        return null
-    } else {
-        return value
+
+    when {
+        value == null || value < invalidMin || value > invalidMax -> {
+            print(invalidMessage)
+            return null
+        }
+        value < min || value > max -> {
+            print(outOfRangeMessage)
+            return null
+        }
+        else ->
+            return value
     }
 }
 
