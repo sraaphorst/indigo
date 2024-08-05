@@ -43,19 +43,6 @@ enum class YesNo(val string: String) {
     }
 }
 
-enum class Player {
-    HUMAN,
-    COMPUTER;
-
-    companion object {
-        fun flip(player: Player) =
-            when (player) {
-                HUMAN -> COMPUTER
-                COMPUTER -> HUMAN
-            }
-    }
-}
-
 data class Card(val rank: Rank, val suit: Suit) {
     override fun toString() =
         "$rank$suit"
@@ -73,11 +60,14 @@ data class Deck(private val cards: List<Card> = SortedCards): Iterable<Card> {
     fun take(numCards: Int = 1): Pair<Deck, Deck> =
         Pair(Deck(cards.take(numCards)), Deck(cards.drop(numCards)))
 
-    fun takeIndex(cardIndex: Int): Pair<Card, Deck> =
+    fun remove(card: Card): Deck =
+        Deck(cards.filterNot { it == card} )
+
+    operator fun get(cardIndex: Int): Card =
         if (cardIndex < 0 || cardIndex >= cards.size)
             throw IndexOutOfBoundsException("${cards.size} cards: attempted to take card $cardIndex")
         else
-            Pair(cards[cardIndex], Deck(cards.take(cardIndex) + cards.drop(cardIndex + 1)))
+            cards[cardIndex]
 
     fun append(card: Card): Deck =
         Deck(cards + card)
@@ -120,39 +110,60 @@ private tailrec fun getNumber(min: Int, max: Int, prompt: String): Int? {
     }
 }
 
-tailrec fun playRound(player: Player, deck: Deck, humanHand: Deck, computerHand: Deck, table: Deck): Player? {
-    if (humanHand.isNotEmpty() || computerHand.isNotEmpty() || deck.isEmpty())
+sealed interface Strategy {
+    fun selectCard(table: Deck, hand: Deck): Card?
+}
+
+private data object HumanStrategy: Strategy {
+    override fun selectCard(table: Deck, hand: Deck): Card? {
+        val cardString = hand.withIndex().map { "${it.index + 1})${it.value}" }.toSpaceSeparatedString()
+        println("Cards in hand: $cardString")
+        val cardIndex = getNumber(1, hand.size, "Choose a card to play (1-${hand.size}):\n> ")
+            ?.let { it - 1 }
+        if (cardIndex == null) return null
+        return hand[cardIndex]
+    }
+}
+
+private data object ComputerStrategy: Strategy {
+    override fun selectCard(table: Deck, hand: Deck): Card {
+        val card = hand[0]
+        println("Computer plays $card")
+        return card
+    }
+}
+
+enum class Player(val strategy: Strategy) {
+    HUMAN(HumanStrategy),
+    COMPUTER(ComputerStrategy);
+
+    companion object {
+        fun flip(player: Player) =
+            when (player) {
+                HUMAN -> COMPUTER
+                COMPUTER -> HUMAN
+            }
+    }
+}
+
+tailrec fun playRound(player: Player, deck: Deck, playerHand: Deck, otherHand: Deck, table: Deck): Player? {
+    if (playerHand.isNotEmpty() || otherHand.isNotEmpty() || deck.isEmpty())
         println("${table.size} cards on the table, and the top card is ${table.last()}")
 
     // Check to see if the player and computer have empty hands.
-    if (humanHand.isEmpty() && computerHand.isEmpty()) {
+    if (playerHand.isEmpty() && otherHand.isEmpty()) {
         // If the deck is empty, the game is over.
         if (deck.isEmpty()) return player
 
-        val (newHumanHand, deck2) = deck.take(6)
-        val (newComputerHand, deck3) = deck2.take(6)
-        return playRound(player, deck3, newHumanHand, newComputerHand, table)
+        val (newPlayerHand, deck2) = deck.take(6)
+        val (newOtherHand, newDeck) = deck2.take(6)
+        return playRound(player, newDeck, newPlayerHand, newOtherHand, table)
     }
 
-    return when (player) {
-        Player.COMPUTER -> {
-            val (card, newComputerHand) = computerHand.takeIndex(0)
-            println("Computer plays $card\n")
-            playRound(Player.flip(player), deck, humanHand, newComputerHand, table.append(card))
-        }
-        Player.HUMAN -> {
-            val cardString = humanHand.withIndex().map { "${it.index+1})${it.value}"}.toSpaceSeparatedString()
-            println("Cards in hand: $cardString")
-            val cardIndex = getNumber(1, humanHand.size, "Choose a card to play (1-${humanHand.size}):\n> ")
-                ?.let { it - 1 }
-            if (cardIndex == null) null
-            else {
-                val (card, newHumanHand) = humanHand.takeIndex(cardIndex)
-                println()
-                playRound(Player.flip(player),deck, newHumanHand, computerHand, table.append(card))
-            }
-        }
-    }
+    val card = player.strategy.selectCard(table, playerHand) ?: return player
+    val newHand = playerHand.remove(card)
+    println()
+    return playRound(Player.flip(player), deck, otherHand, newHand, table.append(card))
 }
 
 fun play(): Player? {
@@ -165,11 +176,11 @@ fun play(): Player? {
     // Deal the initial cards.
     val deck1 = Deck.DefaultDeck.shuffle()
     val (table, deck2) = deck1.take(4)
-    val (playerHand, deck3) = deck2.take(6)
-    val (computerHand, deck) = deck3.take(6)
+    val (firstHand, deck3) = deck2.take(6)
+    val (secondHand, deck) = deck3.take(6)
 
     println("Initial cards on the table: ${table.toSpaceSeparatedString()}\n")
-    return playRound(player, deck, playerHand, computerHand, table)
+    return playRound(player, deck, firstHand, secondHand, table)
 }
 
 fun main() {
